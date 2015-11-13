@@ -8,6 +8,7 @@ import textwrap
 import pandas as pd
 from nipype.interfaces import fsl
 import nipype.pipeline.engine as pe
+import nipype.interfaces.io as nio
 
 pd.set_option('display.max_rows', 50000)
 pd.set_option('display.max_columns', 500)
@@ -15,7 +16,33 @@ pd.set_option('display.width', 1000)
 #pd.set_option('display.height', 1000)
 
 
+def longestSubstringFinder(string1, string2):
+    answer = ""
+    len1, len2 = len(string1), len(string2)
+    for i in range(len1):
+        match = ""
+        for j in range(len2):
+            if (i + j < len1 and string1[i + j] == string2[j]):
+                match += string2[j]
+            else:
+                if (len(match) > len(answer)): answer = match
+                match = ""
+    return answer
+
 def main(args):
+    #datasource1 = nio.DataGrabber()
+
+    overlap = longestSubstringFinder(args.dtiDir, args.t1Dir)
+    if overlap =="":
+        base_directory = args.dtiDir
+    else:
+        base_directory = overlap
+
+    print base_directory
+
+    datasink = pe.Node(nio.DataSink(), name='sinker')
+    datasink.inputs.base_directory = base_directory
+
 
     T1s_in_dtiDir = [x for x in os.listdir(args.dtiDir) if re.search('co2.*.nii.gz',x)]
     T1s_in_t1Dir = [x for x in os.listdir(args.t1Dir) if re.search('co2.*.nii.gz',x)]
@@ -42,6 +69,7 @@ def main(args):
     #bet_out = t1_bet_file
     btr = pe.Node(interface = fsl.BET(), name='bet')
     btr.inputs.in_file = T1_co
+    btr.inputs.out_file = 'T1_brain.nii.gz'
     btr.inputs.frac = 0.4
     btr.inputs.center = [82, 83, 124]
     btr.inputs.mask = True
@@ -83,9 +111,14 @@ def main(args):
     workflow.add_nodes([btr, flirt, flirt_apply])
 
     workflow.connect([
+        (btr, datasink,[('out_file', 'bet_out')]),
+        (btr, datasink,[('mask_file', 'bet_out.@mask')]),
         (btr, flirt,[('out_file', 'in_file')]),
+        (flirt, datasink,[('out_file', 'flirt_out')]),
+        (flirt, datasink,[('out_matrix_file', 'flirt_out.@matrix')]),
         (flirt, flirt_apply,[('out_matrix_file', 'in_matrix_file')]),
-        (btr, flirt_apply,[('mask_file', 'in_file')])
+        (btr, flirt_apply,[('mask_file', 'in_file')]),
+        (flirt_apply, datasink,[('out_file', 'flirt_apply_out')])
             ])
 
 
